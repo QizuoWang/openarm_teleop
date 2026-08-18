@@ -37,3 +37,6 @@
 [submodule "nodes/dora-openarm-vr"]
 	path = nodes/dora-openarm-vr
 	url = https://github.com/enactic/dora-openarm-vr.git
+[submodule "nodes/dora-openarm-webxr"]
+	path = nodes/dora-openarm-webxr
+	url = https://github.com/enactic/dora-openarm-webxr.git
