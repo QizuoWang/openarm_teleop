@@ -12,23 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-/dataset/
-/out/
-/.openarm-fold/
-/vr_data/
-/folding_data/
-/derived/
-/reports/
-/outputs/
-/.venv-lerobot/
+"""dora-rs node that provides UI to control data collection with OpenArm."""
 
-# Local Python/build artifacts
-__pycache__/
-*.py[cod]
-*.egg-info/
-.pytest_cache/
-.ruff_cache/
+import os
 
-# Hikrobot SDK runtime artifacts (host-specific)
-/Mv3dRgbdLog/
-/RGBDSensorCali_*.xml
+# Define the path to the README file relative to the package directory
+readme_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "README.md")
+
+# Read the content of the README file
+try:
+    with open(readme_path, encoding="utf-8") as f:
+        __doc__ = f.read()
+except FileNotFoundError:
+    __doc__ = "README file not found."

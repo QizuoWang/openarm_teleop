@@ -2,6 +2,23 @@
 
 This repository provides data collection configurations for [OpenArm](https://openarm.dev/) with [dora-rs](https://dora-rs.ai/).
 
+## T-shirt folding workflow
+
+The solo VR workflow is exposed through one command:
+
+```bash
+./openarm-fold --help
+```
+
+It provides `preflight`, `collect`, `review`, `convert`, `train`, and `report`
+subcommands. Collection starts with the arms paused, saves lossless raw data to
+`folding_data/dataset`, resumes at the next unused episode, and keeps failures
+and interrupted episodes outside the initial behavioral-cloning split.
+
+See [FOLDING_WORKFLOW.md](FOLDING_WORKFLOW.md) for the executable collection
+protocol and [TRAINING.md](TRAINING.md) for the isolated pinned LeRobot/ACT
+environment. Real-robot policy deployment is deliberately not included.
+
 ## Configurations
 
 [`metadata.yaml`](metadata.yaml) is metadata used by configurations with real cameras. [`metadata_mujoco.yaml`](metadata_mujoco.yaml) is metadata used by configurations that render cameras with MuJoCo.

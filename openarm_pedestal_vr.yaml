@@ -1,0 +1,80 @@
+# OpenArm pedestal configuration for VR teleoperation.
+# The grippers start and stop open so enabling the arms does not close them.
+
+joint_limits:
+  right_arm:
+    - [-1.3, 2.0]
+    - [-0.174533, 2.0]
+    - [-1.570796, 1.570796]
+    - [0.0, 2.443461]
+    - [-1.570796, 1.570796]
+    - [-0.785398, 0.785398]
+    - [-1.570796, 1.570796]
+    - [-0.4, 1.047198]
+  left_arm:
+    - [-2.0, 1.396263]
+    - [-2.0, 0.174533]
+    - [-1.570796, 1.570796]
+    - [0.0, 2.443461]
+    - [-1.570796, 1.570796]
+    - [-0.785398, 0.785398]
+    - [-1.570796, 1.570796]
+    - [-1.047198, 0.4]
+
+joint_offsets:
+  right_arm: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  left_arm: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+joint_delta_position_limits:
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.5
+  - 1.5
+  - 1.5
+  - 1.5
+  - 3.14
+
+joint_velocity_limits:
+  - 2.0
+  - 2.0
+  - 3.3
+  - 3.3
+  - 6.3
+  - 6.3
+  - 6.3
+  - 20.0
+
+can_interface:
+  right_arm: "can0"
+  left_arm: "can1"
+
+motor_config:
+  types: ['DM8009', 'DM8009', 'DM4340', 'DM4340', 'DM4310', 'DM4310', 'DM4310', 'DM4310']
+  send_ids: [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]
+  recv_ids: [0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18]
+
+gripper_posforce: true
+gripper_posforce_limits: [50.0, 1.0]
+
+control_gains:
+  kps: [70.0, 70.0, 70.0, 60.0, 10.0, 10.0, 10.0, 10.0]
+  kds: [2.75, 2.5, 2.0, 2.0, 0.7, 0.6, 0.5, 0.2]
+
+start:
+  moves:
+    - name: "initial_grippers_open"
+      position:
+        right_arm: [0.0, 0.0, 0.0, 1.5707963267948966, 0.0, 0.0, 0.0, -1.0]
+        left_arm: [0.0, 0.0, 0.0, 1.5707963267948966, 0.0, 0.0, 0.0, 1.0]
+      hz: 50
+      duration: 2
+
+stop:
+  moves:
+    - name: "initial_grippers_open"
+      position:
+        right_arm: [0.0, 0.0, 0.0, 1.5707963267948966, 0.0, 0.0, 0.0, -1.0]
+        left_arm: [0.0, 0.0, 0.0, 1.5707963267948966, 0.0, 0.0, 0.0, 1.0]
+      hz: 50
+      duration: 2

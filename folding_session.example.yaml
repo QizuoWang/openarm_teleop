@@ -1,0 +1,16 @@
+# Copying this file is optional. `./openarm-fold collect` creates and updates
+# .openarm-fold/session.yaml without modifying this template.
+collection_session_id: fold-pilot-001
+operator_id: operator-01
+dataset_split: train
+garment_id: tshirt-train-01
+garment:
+  size: medium
+  material: cotton
+  color: blue
+  notes: ""
+initial_pose_id: flat-a
+target_accepted_episodes: 25
+park:
+  approved: false
+  profile: null

@@ -12,23 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-/dataset/
-/out/
-/.openarm-fold/
-/vr_data/
-/folding_data/
-/derived/
-/reports/
-/outputs/
-/.venv-lerobot/
+root = true
 
-# Local Python/build artifacts
-__pycache__/
-*.py[cod]
-*.egg-info/
-.pytest_cache/
-.ruff_cache/
+[*.sh]
 
-# Hikrobot SDK runtime artifacts (host-specific)
-/Mv3dRgbdLog/
-/RGBDSensorCali_*.xml
+indent_style = space
+indent_size = 2
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true

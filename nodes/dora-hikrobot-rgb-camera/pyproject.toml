@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dora-hikrobot-rgb-camera"
+version = "0.1.0"
+description = "Dora node for Hikrobot MV3D RGB-D cameras used as RGB cameras"
+requires-python = ">=3.10"
+dependencies = [
+  "dora-rs >= 0.5.0",
+  "numpy",
+  "opencv-python-headless",
+  "pyarrow",
+]
+
+[project.scripts]
+dora-hikrobot-rgb-camera = "dora_hikrobot_rgb_camera.main:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

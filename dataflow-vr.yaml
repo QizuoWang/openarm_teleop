@@ -18,6 +18,9 @@ nodes:
     path: dora-openarm-data-collection-ui
     env:
       METADATA_FILE: "metadata.yaml"
+      SESSION_FILE: ".openarm-fold/session.yaml"
+      DATASET_DIRECTORY: "folding_data/dataset"
+      MINIMUM_FREE_GIB: 50
     inputs:
       tick: dora/timer/secs/1
       button_a:
@@ -25,6 +28,15 @@ nodes:
         queue_size: 100
       button_b:
         source: udp-receiver/button_b
+        queue_size: 100
+      button_x:
+        source: udp-receiver/button_x
+        queue_size: 100
+      button_y:
+        source: udp-receiver/button_y
+        queue_size: 100
+      joystick_y_left:
+        source: udp-receiver/joystick_y_left
         queue_size: 100
       vr_receive_times:
         source: udp-receiver/vr_receive_times
@@ -35,12 +47,6 @@ nodes:
       camera_wrist_left:
         source: camera-wrist-left/image
         queue_size: 1
-      camera_head_left:
-        source: camera-head-stereo-splitter/image_0
-        queue_size: 1
-      camera_head_right:
-        source: camera-head-stereo-splitter/image_1
-        queue_size: 1
       camera_ceiling:
         source: camera-ceiling/image
         queue_size: 1
@@ -48,6 +54,8 @@ nodes:
         source: follower-right/status
       arm_status_left:
         source: follower-left/status
+      recorder_status:
+        source: recorder/status
     outputs:
       - command
       - arm_command
@@ -74,7 +82,7 @@ nodes:
   - id: udp-receiver
     build: pip install -e nodes/dora-openarm-vr
     path: dora-openarm-quest-receiver
-    args: "--host 0.0.0.0 --port 5006"
+    args: "--host 0.0.0.0 --port 5006 --gripper-calibration gripper_calibration.json"
     inputs:
       tick: quittable-tick-leader/tick
     outputs:
@@ -86,13 +94,14 @@ nodes:
       - button_a
       - button_b
       - button_x
+      - button_y
       - status
       - vr_receive_times
 
   - id: ik
     build: pip install -e nodes/dora-openarm-kinematics
     path: dora-openarm-ik
-    args: "--mode bimanual --max-iters 10 --dt 0.1 --damping 0.1 --posture-cost 0.01 --lm-damping 0.01"
+    args: "--mode bimanual --max-iters 10 --dt 0.002 --limit-velocity --damping 0.1 --posture-cost 0.01 --lm-damping 0.01"
     inputs:
       tick: quittable-tick-leader/tick
       target_right: udp-receiver/pose_right
@@ -105,38 +114,27 @@ nodes:
       - status
 
   - id: camera-wrist-right
-    build: pip install opencv-video-capture
-    path: opencv-video-capture
+    build: pip install -e nodes/dora-hikrobot-rgb-camera
+    path: dora-hikrobot-rgb-camera
     env:
-      # Please configure!
-      CAPTURE_PATH: "/dev/camera_wrist_right"
-      ENCODING: "jpeg"
-      IMAGE_HEIGHT: 600
-      IMAGE_WIDTH: 960
+      HIKROBOT_MV3D_LIB: "/home/robot/openarm/hikrobot/Mv3dRgbdSDK_ROS2/src/hik_rgbd/lib"
+      LD_LIBRARY_PATH: "/home/robot/openarm/hikrobot/Mv3dRgbdSDK_ROS2/src/hik_rgbd/lib"
+      SERIAL_NUMBER: "00DA8573792"
+      WORKING_MODE: 2
+      IMAGE_MODE: 8
+      IMAGE_HEIGHT: 360
+      IMAGE_WIDTH: 640
       JPEG_QUALITY: 90
+      FETCH_TIMEOUT_MS: 3000
     inputs:
       tick: quittable-tick-camera/tick
     outputs:
       - image
 
-  # ── MuJoCo viewer  ──
-  - id: mujoco-viewer
-    build: pip install -e nodes/dora-openarm-mujoco
-    path: dora-openarm-mujoco
-    args: "--keyframe home --viewer --debug-frames"
-    inputs:
-      position_left: ik/position_left
-      position_right: ik/position_right
-      pose_right: udp-receiver/pose_right
-      pose_left: udp-receiver/pose_left
-      joystick_y: udp-receiver/joystick_y_left
-    outputs:
-      - status
-
   - id: follower-right
     build: pip install -e nodes/dora-openarm
     path: dora-openarm
-    args: "--side right --align-trigger gripper"
+    args: "--side right --config openarm_pedestal_vr.yaml --align-trigger gripper"
     inputs:
       # Event ID is only used. Event value isn't used.
       request_state: ik/position_right
@@ -149,7 +147,7 @@ nodes:
   - id: follower-left
     build: pip install -e nodes/dora-openarm
     path: dora-openarm
-    args: "--side left --align-trigger gripper"
+    args: "--side left --config openarm_pedestal_vr.yaml --align-trigger gripper"
     inputs:
       request_state: ik/position_left
       move_position: ik/position_left
@@ -158,70 +156,37 @@ nodes:
       - state
       - status
 
-  - id: lifter
-    build: pip install -e nodes/dora-openarm-cell-lifter
-    path: dora-openarm-cell-lifter
-    inputs:
-      joystick_y: udp-receiver/joystick_y_left
-    outputs:
-      - elevation_observation
-      - elevation_action
-
   - id: camera-wrist-left
-    build: pip install opencv-video-capture
-    path: opencv-video-capture
+    build: pip install -e nodes/dora-hikrobot-rgb-camera
+    path: dora-hikrobot-rgb-camera
     env:
-      # Please configure!
-      CAPTURE_PATH: "/dev/camera_wrist_left"
-      ENCODING: "jpeg"
-      IMAGE_HEIGHT: 600
-      IMAGE_WIDTH: 960
+      HIKROBOT_MV3D_LIB: "/home/robot/openarm/hikrobot/Mv3dRgbdSDK_ROS2/src/hik_rgbd/lib"
+      LD_LIBRARY_PATH: "/home/robot/openarm/hikrobot/Mv3dRgbdSDK_ROS2/src/hik_rgbd/lib"
+      SERIAL_NUMBER: "00DB1265540"
+      WORKING_MODE: 2
+      IMAGE_MODE: 8
+      IMAGE_HEIGHT: 360
+      IMAGE_WIDTH: 640
       JPEG_QUALITY: 90
+      FETCH_TIMEOUT_MS: 3000
     inputs:
       tick: quittable-tick-camera/tick
     outputs:
       - image
-
-  - id: camera-head-stereo
-    build: pip install opencv-video-capture
-    path: opencv-video-capture
-    env:
-      # Please configure!
-      # Stereo camera: left and right images placed side by side in one frame.
-      CAPTURE_PATH: "/dev/camera_head_stereo"
-      ENCODING: "bgr8"
-      IMAGE_HEIGHT: 720
-      IMAGE_WIDTH: 2560
-    inputs:
-      tick: quittable-tick-camera/tick
-    outputs:
-      - image
-
-  - id: camera-head-stereo-splitter
-    build: pip install -e nodes/dora-opencv-image-splitter
-    path: dora-opencv-image-splitter
-    env:
-      SPLIT_MODE: "vertical"
-      NUM_SPLITS: 2
-      JPEG_QUALITY: 90
-      IMAGE_HEIGHT: 720
-      IMAGE_WIDTH: 2560
-    inputs:
-      image: camera-head-stereo/image
-    outputs:
-      - image_0
-      - image_1
 
   - id: camera-ceiling
-    build: pip install opencv-video-capture
-    path: opencv-video-capture
+    build: pip install -e nodes/dora-hikrobot-rgb-camera
+    path: dora-hikrobot-rgb-camera
     env:
-      # Please configure!
-      CAPTURE_PATH: "/dev/camera_ceiling"
-      ENCODING: "jpeg"
-      IMAGE_HEIGHT: 600
-      IMAGE_WIDTH: 960
+      HIKROBOT_MV3D_LIB: "/home/robot/openarm/hikrobot/Mv3dRgbdSDK_ROS2/src/hik_rgbd/lib"
+      LD_LIBRARY_PATH: "/home/robot/openarm/hikrobot/Mv3dRgbdSDK_ROS2/src/hik_rgbd/lib"
+      SERIAL_NUMBER: "00DA8573794"
+      WORKING_MODE: 2
+      IMAGE_MODE: 8
+      IMAGE_HEIGHT: 360
+      IMAGE_WIDTH: 640
       JPEG_QUALITY: 90
+      FETCH_TIMEOUT_MS: 3000
     inputs:
       tick: quittable-tick-camera/tick
     outputs:
@@ -232,7 +197,7 @@ nodes:
     path: dora-openarm-dataset-recorder
     env:
       METADATA_FILE: "metadata.yaml"
-      DIRECTORY: "vr_data"
+      DIRECTORY: "folding_data"
     inputs:
       command: ui/command
       arm_right_action: ik/position_right
@@ -241,8 +206,6 @@ nodes:
       arm_left_observation: follower-left/state
       camera_wrist_right: camera-wrist-right/image
       camera_wrist_left: camera-wrist-left/image
-      camera_head_left: camera-head-stereo-splitter/image_0
-      camera_head_right: camera-head-stereo-splitter/image_1
       camera_ceiling: camera-ceiling/image
-      elevation_action: lifter/elevation_action
-      elevation_observation: lifter/elevation_observation
+    outputs:
+      - status

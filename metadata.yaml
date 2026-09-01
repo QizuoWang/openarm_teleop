@@ -13,11 +13,30 @@
 # limitations under the License.
 
 location: Lab
-operator: Tester
+operator: configured-per-session
 
 tasks:
-  - prompt: Pick a spoon.
-    description: Pick a spoon on a table.
+  - prompt: Fold the T-shirt into a compact rectangle.
+    description: >-
+      Start front-down with the collar nearest the robot. Fold the left sleeve
+      and side inward, then the right sleeve and side inward. Fold the bottom
+      third toward the collar, then fold toward the collar once more.
+
+collection_protocol:
+  id: tshirt_compact_fold_v1
+  phase_labels: false
+  camera_resolution: [640, 360]
+  initial_pose:
+    translation_tolerance_cm: 5
+    yaw_tolerance_deg: 10
+    wrinkles: minor
+  episode_boundary:
+    stable_preroll_s: 1
+    stable_postroll_s: 1
+  success:
+    max_protrusion_cm: 3
+    requires_stable_compact_rectangle: true
+    requires_sleeves_contained: true
 
 equipment:
   id: Test
@@ -26,18 +45,8 @@ equipment:
     arms:
       id: OpenArm
       version: "2.0"
-    lifter:
-      id: OpenArmCellLifter
-      version: "1.0"
-      mechanism: lead_screw
-      lead_length: 5.0
-      stroke: 300
-      home: bottom
-      unit: mm
   perceptions:
     cameras:
       wrist_left: {}
       wrist_right: {}
       ceiling: {}
-      head_left: {}
-      head_right: {}

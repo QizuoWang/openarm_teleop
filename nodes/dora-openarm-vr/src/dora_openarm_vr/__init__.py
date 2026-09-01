@@ -11,24 +11,3 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-/dataset/
-/out/
-/.openarm-fold/
-/vr_data/
-/folding_data/
-/derived/
-/reports/
-/outputs/
-/.venv-lerobot/
-
-# Local Python/build artifacts
-__pycache__/
-*.py[cod]
-*.egg-info/
-.pytest_cache/
-.ruff_cache/
-
-# Hikrobot SDK runtime artifacts (host-specific)
-/Mv3dRgbdLog/
-/RGBDSensorCali_*.xml

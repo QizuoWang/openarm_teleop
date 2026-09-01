@@ -12,23 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-/dataset/
-/out/
-/.openarm-fold/
-/vr_data/
-/folding_data/
-/derived/
-/reports/
-/outputs/
-/.venv-lerobot/
-
-# Local Python/build artifacts
-__pycache__/
-*.py[cod]
-*.egg-info/
-.pytest_cache/
-.ruff_cache/
-
-# Hikrobot SDK runtime artifacts (host-specific)
-/Mv3dRgbdLog/
-/RGBDSensorCali_*.xml
+location: Lab
+operator: Tester
+tasks:
+  - prompt: Pick a spoon.
+    description: Pick a spoon on a table.
+equipment:
+  id: Test
+  version: "1.0"
+  embodiments:
+    arms:
+      id: OpenArm
+      version: "2.0"
+  perceptions:
+    cameras:
+      wrist_left: {}
+      wrist_right: {}
+      ceiling: {}
+      head_left: {}
+      head_right: {}

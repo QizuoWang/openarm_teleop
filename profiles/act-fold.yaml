@@ -1,0 +1,22 @@
+profile_version: 1
+dataset:
+  format: LeRobotDataset-v3
+  fps: 30
+  cameras:
+    - observation.images.wrist_right
+    - observation.images.wrist_left
+    - observation.images.ceiling
+  state: observation.state
+  action: action
+policy:
+  type: act
+  # Deliberately unresolved until `./openarm-fold report` profiles the first
+  # 25 accepted episodes. Training refuses to guess this value.
+  chunk_size: null
+steps: 100000
+batch_size: 8
+device: cuda
+wandb: false
+deployment:
+  authorized: false
+  note: Real-robot policy deployment is a separate safety-gated task.

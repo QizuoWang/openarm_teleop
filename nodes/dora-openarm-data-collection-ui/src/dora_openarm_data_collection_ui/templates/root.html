@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OpenArm folding collection</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #071019;
+        --panel: #101d29;
+        --border: #294052;
+        --text: #edf7ff;
+        --muted: #91a6b7;
+        --ok: #39e58c;
+        --warn: #ffc857;
+        --bad: #ff5c70;
+        --cyan: #45d7ff;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--text);
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      }
+      body.recording { box-shadow: inset 0 0 0 12px var(--bad); }
+      main { max-width: 1500px; margin: 0 auto; padding: 28px; }
+      header {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        gap: 24px;
+        margin-bottom: 22px;
+      }
+      h1 { margin: 0; font-size: 34px; }
+      .subtitle { color: var(--muted); margin-top: 6px; font-size: 17px; }
+      .mode {
+        padding: 16px 28px;
+        border-radius: 999px;
+        font-size: 24px;
+        font-weight: 800;
+        letter-spacing: .08em;
+        background: var(--ok);
+        color: #042313;
+      }
+      .mode.recording { background: var(--bad); color: white; }
+      .mode.blocked { background: var(--warn); color: #2b1c00; }
+      .grid { display: grid; grid-template-columns: 1.25fr .75fr; gap: 20px; }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        padding: 22px;
+      }
+      .panel h2 {
+        margin: 0 0 16px;
+        color: var(--muted);
+        font-size: 14px;
+        letter-spacing: .14em;
+        text-transform: uppercase;
+      }
+      .hero { font-size: 25px; line-height: 1.35; }
+      .message {
+        margin-top: 18px;
+        padding: 16px;
+        background: #07131d;
+        border-left: 5px solid var(--cyan);
+        font-size: 20px;
+      }
+      .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+      .metric { background: #0a1621; border-radius: 12px; padding: 14px; }
+      .metric strong { display: block; font-size: 28px; color: var(--cyan); }
+      .metric span { color: var(--muted); font-size: 13px; }
+      .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+      .check {
+        display: flex;
+        justify-content: space-between;
+        padding: 11px 13px;
+        border-radius: 10px;
+        background: #09151f;
+        color: var(--muted);
+      }
+      .check.ok { color: var(--ok); }
+      .check.bad { color: var(--bad); }
+      .arms { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      .arm { padding: 16px; background: #09151f; border-radius: 12px; }
+      .arm strong { display: block; margin-top: 5px; font-size: 22px; }
+      .aligned strong { color: var(--ok); }
+      .started strong { color: var(--warn); }
+      .stopped strong { color: var(--muted); }
+      .controls { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 10px; }
+      form { margin: 0; }
+      button {
+        border: 1px solid var(--border);
+        border-radius: 11px;
+        padding: 13px 18px;
+        background: #172a39;
+        color: var(--text);
+        font-size: 16px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      button.primary { background: #0a6840; border-color: var(--ok); }
+      button.danger { background: #5c1a28; border-color: var(--bad); }
+      button:disabled { cursor: not-allowed; opacity: .35; }
+      .failure {
+        grid-column: 1 / -1;
+        border: 2px solid var(--warn);
+      }
+      .reason { font-size: 30px; color: var(--warn); font-weight: 800; }
+      .help { margin-top: 10px; color: var(--muted); }
+      .controller { margin-top: 20px; font-size: 14px; color: var(--muted); line-height: 1.6; }
+      .rate { font-variant-numeric: tabular-nums; }
+      @media (max-width: 900px) {
+        .grid { grid-template-columns: 1fr; }
+        .stats { grid-template-columns: 1fr 1fr; }
+      }
+    </style>
+  </head>
+  {% set state = snapshot.state %}
+  <body class="{% if state.collecting %}recording{% endif %}">
+    <main>
+      <header>
+        <div>
+          <h1>OpenArm T-shirt Folding</h1>
+          <div class="subtitle">
+            Session {{ snapshot.session.collection_session_id | default("not configured") }} ·
+            Garment {{ snapshot.session.garment_id | default("not configured") }} ·
+            {{ snapshot.session.dataset_split | default("unset") }}
+          </div>
+        </div>
+        {% if state.collecting %}
+          <div class="mode recording">RECORDING {{ state.episode_number }}</div>
+        {% elif snapshot.collection_ready %}
+          <div class="mode">READY</div>
+        {% else %}
+          <div class="mode blocked">BLOCKED</div>
+        {% endif %}
+      </header>
+
+      <div class="grid">
+        <section class="panel">
+          <h2>Task</h2>
+          <div class="hero">{{ state.task_title }}</div>
+          <div class="message">{{ state.recorder_message }}</div>
+          <div class="controls">
+            {% if state.collecting %}
+              <form action="{{ url_for('_success') }}" method="post">
+                <button class="primary" {% if not snapshot.collection_ready %}disabled{% endif %}>Accept</button>
+              </form>
+              {% for reason in snapshot.failure_reasons %}
+                <form action="{{ url_for('_fail', reason=reason) }}" method="post">
+                  <button>{{ reason | replace('_', ' ') }}</button>
+                </form>
+              {% endfor %}
+              <form action="{{ url_for('_cancel') }}" method="post">
+                <button class="danger">Quarantine operator error</button>
+              </form>
+            {% else %}
+              <form action="{{ url_for('_start') }}" method="post">
+                <button class="primary" {% if not snapshot.collection_ready %}disabled{% endif %}>Start episode {{ state.episode_number }}</button>
+              </form>
+            {% endif %}
+            <form action="{{ url_for('_arm_start') }}" method="post">
+              <button {% if not snapshot.data_ready %}disabled{% endif %}>Enable arms</button>
+            </form>
+            <form action="{{ url_for('_arm_stop') }}" method="post">
+              <button class="danger">Pause arms</button>
+            </form>
+            <form action="{{ url_for('_park') }}" method="post">
+              <button {% if not state.park_enabled %}disabled{% endif %}>Park</button>
+            </form>
+          </div>
+          <div class="controller">
+            Quest: A start/accept · B failure menu · X pause / hold enable · hold Y cancel or park · hold B idle quit
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Session progress</h2>
+          <div class="stats">
+            <div class="metric"><strong>{{ state.accepted_count }}</strong><span>accepted</span></div>
+            <div class="metric"><strong>{{ state.failed_count }}</strong><span>retained failures</span></div>
+            <div class="metric"><strong>{{ state.quarantined_count }}</strong><span>quarantined</span></div>
+            <div class="metric"><strong>{{ state.episode_number }}</strong><span>next episode</span></div>
+          </div>
+        </section>
+
+        {% if state.failure_menu %}
+          <section class="panel failure">
+            <h2>Failure reason</h2>
+            <div class="reason">{{ snapshot.selected_failure_reason | replace('_', ' ') }}</div>
+            <div class="help">Move the left joystick to choose; press A to retain and finalize.</div>
+          </section>
+        {% endif %}
+
+        <section class="panel">
+          <h2>Hard preflight</h2>
+          <div class="checks">
+            {% for name, healthy in snapshot.collection_checks.items() %}
+              <div class="check {% if healthy %}ok{% else %}bad{% endif %}">
+                <span>{{ name | replace('_', ' ') }}</span>
+                <strong>{% if healthy %}OK{% else %}BLOCK{% endif %}</strong>
+              </div>
+            {% endfor %}
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Arms and recorder</h2>
+          <div class="arms">
+            <div class="arm {{ state.arm_status_left }}">Left<strong>{{ state.arm_status_left }}</strong></div>
+            <div class="arm {{ state.arm_status_right }}">Right<strong>{{ state.arm_status_right }}</strong></div>
+          </div>
+          <div class="help">Recorder: {{ state.recorder_state }} · Free disk: {{ (snapshot.disk.free_bytes / 1073741824) | round(1) }} GiB</div>
+        </section>
+
+        <section class="panel" style="grid-column: 1 / -1">
+          <h2>Live streams</h2>
+          <div class="checks">
+            {% for camera in ["camera_wrist_right", "camera_wrist_left", "camera_ceiling"] %}
+              <div class="check bad" data-stream="{{ camera }}">
+                <span>{{ camera | replace('camera_', '') | replace('_', ' ') }}</span>
+                <strong class="rate">-- Hz · -- ms</strong>
+              </div>
+            {% endfor %}
+            <div class="check bad" data-stream="vr">
+              <span>Quest UDP</span><strong class="rate">-- Hz · -- ms</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel" style="grid-column: 1 / -1">
+          <h2>Shutdown</h2>
+          <form action="{{ url_for('_quit') }}" method="post">
+            <button class="danger">Quit collection</button>
+          </form>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      const stateEvents = new EventSource("/events?since={{ state_version }}");
+      stateEvents.onmessage = () => location.reload();
+
+      const statsEvents = new EventSource("/stats");
+      statsEvents.onmessage = (event) => {
+        const payload = JSON.parse(event.data);
+        const streams = {...payload.cameras, vr: payload.vr};
+        for (const [name, stats] of Object.entries(streams)) {
+          const row = document.querySelector(`[data-stream="${name}"]`);
+          if (!row) continue;
+          const healthy = stats && stats.fps >= (name === "vr" ? 50 : 20);
+          row.classList.toggle("ok", healthy);
+          row.classList.toggle("bad", !healthy);
+          row.querySelector(".rate").textContent =
+            stats && stats.fps > 0
+              ? `${stats.fps.toFixed(1)} Hz · ${stats.jitter_ms.toFixed(1)} ms`
+              : "-- Hz · -- ms";
+        }
+      };
+    </script>
+  </body>
+</html>
