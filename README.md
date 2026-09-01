@@ -47,6 +47,14 @@ dora run dataflow-webxr-mujoco.yaml --uv
 
 Open http://localhost:8000/ on the local machine for the data collection UI, and open `https://${YOUR_HOST_NAME}:8443/` in the Web browser on your VR device (where `${HOSTNAME}` matches the value passed to `prepare_tls.sh`) to start teleoperation.
 
+### WheelTec R680 configuration
+
+[`dataflow-r680.yaml`](dataflow-r680.yaml) maps the Quest thumbsticks to a
+canonical mobile-base command and sends it from the Dora PC to an R680-side ROS
+2 agent over UDP. The existing OpenArm nodes are not modified. See
+[`nodes/dora-r680-control/README.md`](nodes/dora-r680-control/README.md) for the
+control mapping and setup instructions.
+
 ### Dummy configuration
 
 [`dataflow_dummy.yaml`](dataflow_dummy.yaml) is a configuration that doesn't use real OpenArm. We can use this for testing a dataflow without real OpenArm.

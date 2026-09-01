@@ -1,0 +1,62 @@
+# Quest 3 control of the WheelTec R680 while Dora remains on the PC.
+# Set R680_HOST to the robot computer's Wi-Fi address before starting this flow.
+
+nodes:
+  # PC input adapter. The existing Quest APK streams JSON to UDP port 5006;
+  # this node converts every JSON field into named Dora/Arrow outputs.
+  - id: quest-receiver
+    build: pip install -e nodes/dora-openarm-vr
+    path: dora-openarm-quest-receiver
+    args: "--host 0.0.0.0 --port 5006"
+    inputs:
+      # Poll the receiver's latest snapshot at 100 Hz. The receiver separately
+      # reports real packet arrivals through vr_receive_times.
+      tick: dora/timer/millis/10
+    outputs:
+      # Pose/trigger/grip outputs must be declared because quest_receiver emits
+      # them even though this base-only dataflow does not consume them.
+      - pose_right
+      - pose_left
+      - pose_reference
+      - trigger_right
+      - trigger_left
+      - grip_right
+      - grip_left
+      # All four thumbstick axes are available; the mapper currently uses left
+      # X/Y and right X. Right Y is reserved for a future function.
+      - joystick_x_left
+      - joystick_y_left
+      - joystick_x_right
+      - joystick_y_right
+      - button_a
+      - button_b
+      - button_x
+      - button_y
+      - status
+      # Actual Quest UDP arrival timestamps, used as the freshness heartbeat.
+      - vr_receive_times
+
+  # PC output adapter. It combines asynchronous Dora inputs into one coherent
+  # RobotCommand and sends compact JSON datagrams to R680_HOST:R680_PORT.
+  - id: r680-control
+    # The pc extra installs Dora/PyArrow only where this node runs.
+    build: pip install -e 'nodes/dora-r680-control[pc]'
+    path: dora-r680-control
+    args: "--robot-port 5007 --linear-x-scale 0.2 --linear-y-scale -0.2 --angular-z-scale -0.5"
+    inputs:
+      # One command is mapped and transmitted every 20 ms (50 Hz).
+      tick: dora/timer/millis/20
+      joystick_x_left: quest-receiver/joystick_x_left
+      joystick_y_left: quest-receiver/joystick_y_left
+      joystick_x_right: quest-receiver/joystick_x_right
+      joystick_y_right: quest-receiver/joystick_y_right
+      button_a: quest-receiver/button_a
+      button_b: quest-receiver/button_b
+      # Do not replace this with joystick event timing: the Quest receiver
+      # republishes its cached joystick state after the headset disconnects.
+      vr_receive_times: quest-receiver/vr_receive_times
+    outputs:
+      # command mirrors the exact JSON datagram for logging/debugging.
+      - command
+      # status emits "ready" after UDP/Dora initialization.
+      - status

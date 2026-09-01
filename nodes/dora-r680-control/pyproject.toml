@@ -1,0 +1,30 @@
+[project]
+# One distribution provides both deployed entry points so they always share the
+# same RobotCommand model and protocol version.
+name = "dora-r680-control"
+version = "0.1.0"
+description = "Quest-to-R680 base control over Dora, UDP, and ROS 2"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+# Installed only on the PC by dataflow-r680.yaml. The R680 base installation
+# stays independent of Dora and uses rclpy supplied by its ROS 2 installation.
+pc = [
+    "dora-rs==0.5.0",
+    "pyarrow>=23.0.1",
+]
+
+[project.scripts]
+# PC: Dora Arrow inputs -> canonical JSON -> UDP.
+dora-r680-control = "dora_r680_control.pc_node:main"
+# R680: UDP -> validated canonical command -> ROS 2 Twist.
+r680-control-agent = "dora_r680_control.r680_agent:main"
+
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+# Import packages live under src/ to prevent accidental repository-root imports.
+where = ["src"]
