@@ -1,37 +1,42 @@
 # Pinned LeRobot/ACT environment
 
 Collection and training use separate Python environments. Do not install
-LeRobot into the Dora collection environment.
+LeRobot into the Dora collection environment. Conversion, export verification,
+training, and offline policy reporting use this checkout and environment:
+
+The default layout is a sibling `lerobot/` checkout and `.venv/` beside this
+repository. The source PC uses `/home/robot/openarm` as that parent directory.
+Use `.openarm-deploy.env` to override paths; see [PORTING.md](PORTING.md).
 
 ## Create the environment
 
-Use Python 3.11:
+The supported checkout is LeRobot 0.6.2 at commit
+`fbb811fca92504439792b97d216f0d00c2268382`. To reproduce it from a fresh clone,
+use Python 3.12 and the checked-in dependency lock:
 
 ```bash
-python3.11 -m venv .venv-lerobot
-.venv-lerobot/bin/python -m pip install --upgrade pip
-.venv-lerobot/bin/python -m pip install -r requirements-lerobot.lock.txt
+export OPENARM_WORKSPACE="$HOME/openarm"
+cd "$OPENARM_WORKSPACE/lerobot"
+git checkout fbb811fca92504439792b97d216f0d00c2268382
+UV_PROJECT_ENVIRONMENT="$OPENARM_WORKSPACE/.venv" \
+  uv sync --frozen --python 3.12 --extra training --extra dataset --no-dev
 ```
 
-`requirements-lerobot.lock.txt` pins the exact official LeRobot source revision
-referenced by the Dataset v3 documentation. Its transitive CUDA/PyTorch wheels
-cannot be frozen until GPU device access is restored; after the first approved
-installation, capture that resolved wheel set before treating the environment
-as fully reproducible. The environment is local and is not created
-automatically.
+`requirements-lerobot.lock.txt` records the same source revision for provenance.
+The workflow additionally checks the imported module path, package version,
+Git revision, clean tracked worktree, and the checkout's `uv.lock`.
 
-## Current GPU readiness boundary
+## GPU readiness boundary
 
-The host PCI and driver metadata identify an RTX 3090, but the current shell has
-no `/dev/nvidia*` devices and `nvidia-smi` cannot communicate with the GPU.
-This workflow does not repair NVIDIA device access. Diagnose that separately,
-then explicitly run:
+This workflow does not repair NVIDIA device access. Before training, explicitly
+run:
 
 ```bash
 ./openarm-fold preflight --training
 ```
 
 Do not start ACT training until every training preflight item reports `OK`.
+This check does not enable the robot or authorize deployment.
 
 ## Outputs and provenance
 

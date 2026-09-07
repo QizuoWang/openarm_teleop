@@ -3,4 +3,5 @@ set -euo pipefail
 
 workflow_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$workflow_root"
+source "$workflow_root/deployments/runtime_env.sh"
 exec python3 -m folding_workflow.cli "$@"

@@ -1,11 +1,15 @@
 profile_version: 1
 dataset:
   format: LeRobotDataset-v3
+  representation: lerobot-openarm-v1
+  robot_type: bi_openarm_follower
+  joint_order: left_then_right
+  joint_units: degrees
   fps: 30
   cameras:
-    - observation.images.wrist_right
-    - observation.images.wrist_left
-    - observation.images.ceiling
+    - observation.images.left_wrist
+    - observation.images.right_wrist
+    - observation.images.base
   state: observation.state
   action: action
 policy:

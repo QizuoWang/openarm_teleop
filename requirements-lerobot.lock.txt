@@ -1,2 +1,3 @@
-# Exact LeRobot source revision shown by the official Dataset v3 documentation.
-lerobot @ https://github.com/huggingface/lerobot/archive/33cad37054c2b594ceba57463e8f11ee374fa93c.zip
+# Exact source revision installed editable in /home/robot/openarm/.venv.
+# The workflow preflight also requires this commit in /home/robot/openarm/lerobot.
+lerobot @ https://github.com/huggingface/lerobot/archive/fbb811fca92504439792b97d216f0d00c2268382.zip

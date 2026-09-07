@@ -8,9 +8,8 @@ import time
 import torch
 from torch.utils.data import DataLoader
 
-from lerobot.datasets import LeRobotDataset
-from lerobot.policies import make_pre_post_processors
-from lerobot.policies.act import ACTPolicy
+from lerobot.datasets.lerobot_dataset import LeRobotDataset
+from lerobot.policies.act.modeling_act import ACTPolicy
 
 
 def evaluate(checkpoint: Path, dataset_root: Path, repo_id: str, output: Path, batch_size: int):
@@ -27,35 +26,39 @@ def evaluate(checkpoint: Path, dataset_root: Path, repo_id: str, output: Path, b
         root=dataset_root,
         delta_timestamps=delta_timestamps,
     )
-    preprocessor, _ = make_pre_post_processors(
-        policy_cfg=policy.config,
-        pretrained_path=str(checkpoint),
-        dataset_stats=dataset.meta.stats,
-        preprocessor_overrides={"device_processor": {"device": str(device)}},
-    )
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=2)
-    weighted_loss = 0.0
+    absolute_error_sum = 0.0
+    valid_values = 0
     samples = 0
     started_ns = time.time_ns()
     with torch.no_grad():
         for batch in loader:
-            processed = preprocessor(batch)
-            loss, _ = policy.forward(processed)
-            batch_samples = int(processed["action"].shape[0])
-            weighted_loss += float(loss.item()) * batch_samples
+            for key, value in batch.items():
+                if isinstance(value, torch.Tensor):
+                    batch[key] = value.to(device, non_blocking=device.type == "cuda")
+            predicted = policy.predict_action_chunk(batch)
+            target = batch["action"]
+            valid = ~batch["action_is_pad"].unsqueeze(-1).expand_as(target)
+            absolute_error_sum += (predicted - target).abs()[valid].sum().item()
+            valid_values += int(valid.sum().item())
+            batch_samples = int(batch["action"].shape[0])
             samples += batch_samples
 
     result = {
-        "evaluation_type": "teacher_forced_validation_loss",
+        "evaluation_type": "deterministic_validation_action_chunk_mae",
         "checkpoint": str(checkpoint.resolve()),
         "dataset_root": str(dataset_root.resolve()),
         "repo_id": repo_id,
         "samples": samples,
-        "mean_loss": weighted_loss / samples if samples else None,
+        "mean_absolute_action_error": (
+            absolute_error_sum / valid_values if valid_values else None
+        ),
+        "valid_action_values": valid_values,
         "started_ns": started_ns,
         "finished_ns": time.time_ns(),
         "limitations": [
-            "This is teacher-forced offline loss, not closed-loop policy performance.",
+            "This is deterministic offline action error, not closed-loop policy performance.",
+            "The metric mixes the configured physical units of all 16 action channels.",
             "Real folding acceptance still requires the separately safety-gated 10+10 rollout protocol.",
         ],
     }

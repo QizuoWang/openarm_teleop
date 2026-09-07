@@ -113,9 +113,36 @@
       .help { margin-top: 10px; color: var(--muted); }
       .controller { margin-top: 20px; font-size: 14px; color: var(--muted); line-height: 1.6; }
       .rate { font-variant-numeric: tabular-nums; }
+      .camera-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+      .camera-view {
+        margin: 0;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: #02070b;
+      }
+      .camera-view img {
+        display: block;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        object-fit: contain;
+        background: #000;
+      }
+      .camera-view figcaption {
+        display: flex;
+        justify-content: space-between;
+        padding: 9px 11px;
+        color: var(--muted);
+        font-size: 13px;
+      }
       @media (max-width: 900px) {
         .grid { grid-template-columns: 1fr; }
         .stats { grid-template-columns: 1fr 1fr; }
+        .camera-grid { grid-template-columns: 1fr; }
       }
     </style>
   </head>
@@ -218,6 +245,18 @@
         </section>
 
         <section class="panel" style="grid-column: 1 / -1">
+          <h2>Live camera views</h2>
+          <div class="camera-grid">
+            {% for camera, label in [("wrist_left", "Left wrist"), ("ceiling", "Ceiling"), ("wrist_right", "Right wrist")] %}
+              <figure class="camera-view">
+                <img data-camera="{{ camera }}" alt="{{ label }} live camera" decoding="async">
+                <figcaption><span>{{ label }}</span><span>live · 10 FPS preview</span></figcaption>
+              </figure>
+            {% endfor %}
+          </div>
+        </section>
+
+        <section class="panel" style="grid-column: 1 / -1">
           <h2>Live streams</h2>
           <div class="checks">
             {% for camera in ["camera_wrist_right", "camera_wrist_left", "camera_ceiling"] %}
@@ -261,6 +300,17 @@
               : "-- Hz · -- ms";
         }
       };
+
+      const cameraImages = document.querySelectorAll("img[data-camera]");
+      const refreshCameraImages = () => {
+        if (document.visibilityState !== "visible") return;
+        const version = Date.now();
+        for (const image of cameraImages) {
+          image.src = `/camera/${image.dataset.camera}.jpeg?v=${version}`;
+        }
+      };
+      refreshCameraImages();
+      setInterval(refreshCameraImages, 100);
     </script>
   </body>
 </html>

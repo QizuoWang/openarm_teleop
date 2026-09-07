@@ -19,7 +19,7 @@ import time
 
 import dora
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from fastapi.templating import Jinja2Templates
 import pyarrow as pa
@@ -118,6 +118,8 @@ camera_stats = {name: CameraStats() for name in CAMERA_INPUTS}
 camera_timestamps = {
     name: collections.deque(maxlen=CAMERA_TIMESTAMP_WINDOW) for name in CAMERA_INPUTS
 }
+latest_camera_frames: dict[str, bytes] = {}
+camera_frame_versions = {name: 0 for name in CAMERA_INPUTS}
 vr_stats = VrStreamStats()
 vr_timestamps = collections.deque(maxlen=VR_TIMESTAMP_WINDOW)
 
@@ -358,6 +360,24 @@ def _root(request: Request):
     )
 
 
+@app.get("/camera/{camera}.jpeg", response_class=Response)
+async def _camera_frame(camera: str):
+    event_id = f"camera_{camera}"
+    if event_id not in REQUIRED_CAMERAS:
+        return Response(status_code=404)
+    frame = latest_camera_frames.get(event_id)
+    if frame is None:
+        return Response(status_code=503, headers={"Cache-Control": "no-store"})
+    return Response(
+        content=frame,
+        media_type="image/jpeg",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "X-Frame-Version": str(camera_frame_versions[event_id]),
+        },
+    )
+
+
 @app.post("/start")
 def _start(request: Request):
     _command_start()
@@ -475,6 +495,7 @@ def _handle_recorder_status(value: str) -> None:
 
 async def _handle_button_event(event_id, pressed, button_state):
     now = time.monotonic()
+    ui_changed = False
     previous = button_state.setdefault(
         event_id, {"pressed": False, "started": 0.0, "long_fired": False}
     )
@@ -490,12 +511,15 @@ async def _handle_button_event(event_id, pressed, button_state):
                 _command_success()
             else:
                 _command_start()
+            ui_changed = True
         elif event_id == "button_b" and state.collecting:
             state.failure_menu = True
             _command_arm_stop()
             _set_message("Choose a failure reason with the left joystick; press A")
+            ui_changed = True
         elif event_id == "button_x":
             _command_arm_stop()
+            ui_changed = True
 
     if (
         pressed
@@ -505,17 +529,21 @@ async def _handle_button_event(event_id, pressed, button_state):
         previous["long_fired"] = True
         if event_id == "button_b" and not state.collecting:
             _command_quit()
+            ui_changed = True
         elif event_id == "button_x" and not state.collecting:
             _command_arm_start()
+            ui_changed = True
         elif event_id == "button_y":
             if state.collecting:
                 _command_cancel()
             else:
                 _command_park()
+            ui_changed = True
 
     if falling:
         previous["pressed"] = False
-    await _notify_state_changed()
+    if ui_changed:
+        await _notify_state_changed()
 
 
 async def _main_dora(server):
@@ -535,6 +563,10 @@ async def _main_dora(server):
 
         event_id = event["id"]
         if event_id in CAMERA_INPUTS:
+            latest_camera_frames[event_id] = event["value"].to_numpy(
+                zero_copy_only=False
+            ).tobytes()
+            camera_frame_versions[event_id] += 1
             _update_camera_stats(
                 event_id,
                 _event_ts_to_seconds(

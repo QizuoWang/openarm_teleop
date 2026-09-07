@@ -1,6 +1,73 @@
-# Data collection configurations for OpenArm with dora-rs
+# OpenArm Teleoperation and Policy Evaluation
 
-This repository provides data collection configurations for [OpenArm](https://openarm.dev/) with [dora-rs](https://dora-rs.ai/).
+VR teleoperation, synchronized dataset collection, review, LeRobot conversion,
+and guarded ACT/SmolVLA evaluation for a pedestal-mounted, bimanual
+[OpenArm](https://openarm.dev/). Collection uses [Dora](https://dora-rs.ai/);
+policy inference runs in a separate process and Python environment.
+
+**Moving to another PC? Start with [PORTING.md](PORTING.md).** It covers fresh
+installation, model/SDK transfer, host configuration, and staged startup.
+
+## Capabilities
+
+- Three synchronized RGB views: left wrist, right wrist, and overhead/base.
+- Solo VR collection with live preview, explicit episode acceptance/rejection,
+  separate session directories, and interrupted-session recovery.
+- Browser-based video review and relabeling without deleting source recordings.
+- LeRobot exports with explicit joint order, units, gripper semantics, and
+  whole-episode training/validation splits.
+- Local ACT and SmolVLA inference with camera preview, joint-limit/start-delta
+  guards, command slew limiting, physical-motion confirmation, and evaluation
+  recording with success/failure labels.
+
+## Safety and support boundary
+
+This repository controls physical hardware. Only one collection/evaluation
+process may own the robot and cameras at a time. Keep the workspace clear and
+the physical emergency stop immediately accessible. A browser stop button is
+not a replacement for a hardware emergency stop.
+
+`preview` reads cameras and joint feedback without enabling motors. Typing
+`MOVE` in a motion-enabled mode starts homing; the policy-step limit does not
+limit that homing sequence. Never relax joint limits to force a rejected policy
+target through. The supplied poses, CAN assignment, gains, and camera serials
+are reference configuration for the original rig, not universal calibration.
+
+The portability and policy-adapter changes have **not** been tested on the
+destination PC or validated through robot motion. Installing dependencies and
+downloading artifacts do not establish hardware readiness.
+
+## Documentation
+
+| Guide | Purpose |
+| --- | --- |
+| [PC migration](PORTING.md) | Installation, external artifacts, host configuration, first startup |
+| [Collection workflow](FOLDING_WORKFLOW.md) | Collect, review, relabel, freeze, and export datasets |
+| [Training](TRAINING.md) | Pinned local LeRobot environment and ACT training |
+| [ACT deployment](deployments/local_act/README.md) | Legacy radians and new degree-format ACT checkpoints |
+| [SmolVLA deployment](deployments/local_smolvla/README.md) | Pinned 30K model, task conditioning, and evaluation |
+
+## Data and model conventions
+
+| Boundary | Joint order | Arm units | Grippers | Cameras |
+| --- | --- | --- | --- | --- |
+| Dora raw collection | Right, then left | Radians | Logical commands; physical feedback | `wrist_right`, `wrist_left`, `ceiling` |
+| LeRobot default export | Left, then right | Degrees | Calibrated degrees, negative-open on both sides | `left_wrist`, `right_wrist`, `base` |
+| Policy execution/recording | Right, then left | Radians | Executed physical targets | Original Dora camera names |
+
+Each arm contributes seven joints and one gripper: 16 dimensions in total.
+The policy adapter converts observations before normalization and converts
+actions after unnormalization. Legacy ACT retains its legacy representation.
+Model weights, normalization statistics, and representation metadata must stay
+together; renaming camera keys alone is not a valid model conversion.
+
+## Repository and external artifacts
+
+Git contains code, documentation, reference configuration, and a small SmolVLA
+deployment manifest. It deliberately excludes datasets, evaluation recordings,
+checkpoint weights, Python environments, vendor SDK binaries, and local host
+overrides. Clone the source, then transfer the external artifacts described in
+[PORTING.md](PORTING.md); a Git clone alone cannot run a trained policy.
 
 ## T-shirt folding workflow
 
@@ -10,14 +77,18 @@ The solo VR workflow is exposed through one command:
 ./openarm-fold --help
 ```
 
-It provides `preflight`, `collect`, `review`, `convert`, `train`, and `report`
-subcommands. Collection starts with the arms paused, saves lossless raw data to
-`folding_data/dataset`, resumes at the next unused episode, and keeps failures
-and interrupted episodes outside the initial behavioral-cloning split.
+It provides `preflight`, `collect`, `review`, `visualize`, `relabel`, `convert`,
+`verify-export`, `train`, `report`, and baseline integrity subcommands.
+Collection starts with the arms paused, saves lossless raw data to
+one directory per session, resumes at the next unused episode, and keeps
+failures and interrupted episodes outside the behavioral-cloning split. Dora's
+lossless format remains right-first/radian; the default LeRobot 0.6 export is
+left-first/degree and uses `left_wrist`, `right_wrist`, and `base` cameras.
 
 See [FOLDING_WORKFLOW.md](FOLDING_WORKFLOW.md) for the executable collection
 protocol and [TRAINING.md](TRAINING.md) for the isolated pinned LeRobot/ACT
-environment. Real-robot policy deployment is deliberately not included.
+environment. Policy evaluation uses the separate launchers documented above;
+collection preflight never authorizes autonomous motion.
 
 ## Configurations
 

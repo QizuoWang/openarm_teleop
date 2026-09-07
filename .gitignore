@@ -15,12 +15,26 @@
 /dataset/
 /out/
 /.openarm-fold/
+/.openarm-fold-session-dataflow.yaml
 /vr_data/
 /folding_data/
 /derived/
 /reports/
 /outputs/
 /.venv-lerobot/
+/.venv*/
+/.python-runtimes/
+/evaluation_data/
+/baselines/
+/deployments/act/
+/.openarm-deploy.env
+/deployments/local_smolvla/deployment.local.json
+*.safetensors
+*.pt
+*.pth
+*.onnx
+*.pem
+*.key
 
 # Local Python/build artifacts
 __pycache__/

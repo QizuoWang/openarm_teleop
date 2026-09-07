@@ -1,0 +1,22 @@
+{
+  "policy_type": "smolvla",
+  "checkpoint": "../lerobot/output/train/smolvla_openarm_folding_2gpu/checkpoints/030000/pretrained_model",
+  "dataset_representation": "lerobot-openarm-v1",
+  "task": "Fold the T-shirt into a compact rectangle.",
+  "policy_python": ".venv-smolvla/bin/python",
+  "vlm_assets": "deployments/local_smolvla/vlm_assets",
+  "vlm_assets_repo": "HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
+  "vlm_assets_revision": "7b375e1b73b11138ff12fe22c8f2822d8fe03467",
+  "representation_evidence": "Saved 91589-frame state/action statistics match the local lerobot06 degree export and degree ACT checkpoint. Remote train_config.json names lerobot06/openarm-tshirt-fold-train. Task copied from local export meta/tasks.parquet.",
+  "default_num_actions": 10,
+  "chunk_size": 50,
+  "fps": 30,
+  "artifact_sha256": {
+    "config.json": "086efdd148a5b539e8dde0342579c63a3ea4bce66e5df8093fc6342320e0b1a4",
+    "train_config.json": "5992e1996675145b543c1c466ae61d4c539a1751f1ca8378ebd04f553ca1b3c2",
+    "policy_preprocessor.json": "21079453db164a8fd8c7012787c0183106e8b27e6440c2a0aac4a8699d1ed985",
+    "policy_postprocessor.json": "68470e2ef2c5263e75791636bc3303dd73b0b51fe3bcb40e997e22d1fba84b64",
+    "policy_preprocessor_step_5_normalizer_processor.safetensors": "9439fa468a3881bfefcd60d996fef2ce247931e44b044c5585351ec3ae2cf6f7",
+    "policy_postprocessor_step_0_unnormalizer_processor.safetensors": "c3223cde1cb796afa4c8ee593f1380f39ebe3c44d6d7f680ba32ec06caee6993"
+  }
+}

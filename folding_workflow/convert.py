@@ -1,7 +1,7 @@
 """Deterministically align raw OpenArm episodes and export LeRobotDataset v3."""
 
 import argparse
-from bisect import bisect_left, bisect_right
+from bisect import bisect_left
 from dataclasses import dataclass
 import json
 from pathlib import Path
@@ -14,17 +14,19 @@ import pyarrow.parquet as pq
 import yaml
 
 from .raw_dataset import CAMERA_NAMES, EpisodeRecord, assigned_split, load_records
+from .representation import (
+    LEROBOT_OPENARM_REPRESENTATION,
+    REPRESENTATIONS,
+    SAFE_GRIPPER_OPEN_DEG,
+    get_spec,
+    transform_action,
+    transform_state,
+)
 
 
 FPS = 30
 FRAME_PERIOD_NS = round(1e9 / FPS)
 DEFAULT_MAX_CAMERA_SKEW_NS = 25_000_000
-JOINT_NAMES = tuple(
-    [*(f"right_joint_{index}" for index in range(1, 8)), "right_gripper"]
-    + [*(f"left_joint_{index}" for index in range(1, 8)), "left_gripper"]
-)
-
-
 class AlignmentError(RuntimeError):
     """Raised when a raw episode cannot form a complete causal timeline."""
 
@@ -208,35 +210,36 @@ def align_episode(
     )
 
 
-def _feature_spec(first: AlignedEpisode):
+def _feature_spec(first: AlignedEpisode, representation: str):
+    spec = get_spec(representation)
     features = {
         "observation.state": {
             "dtype": "float32",
             "shape": (16,),
-            "names": list(JOINT_NAMES),
+            "names": list(spec.joint_names),
         },
         "action": {
             "dtype": "float32",
             "shape": (16,),
-            "names": list(JOINT_NAMES),
+            "names": list(spec.joint_names),
         },
     }
-    if first.velocity is not None:
+    if spec.include_telemetry and first.velocity is not None:
         features["observation.velocity"] = {
             "dtype": "float32",
             "shape": (16,),
-            "names": list(JOINT_NAMES),
+            "names": list(spec.joint_names),
         }
-    if first.effort is not None:
+    if spec.include_telemetry and first.effort is not None:
         features["observation.effort"] = {
             "dtype": "float32",
             "shape": (16,),
-            "names": list(JOINT_NAMES),
+            "names": list(spec.joint_names),
         }
-    for camera in CAMERA_NAMES:
-        with Image.open(first.camera_paths[camera][0]) as image:
+    for raw_camera, output_camera in spec.camera_map.items():
+        with Image.open(first.camera_paths[raw_camera][0]) as image:
             width, height = image.size
-        features[f"observation.images.{camera}"] = {
+        features[f"observation.images.{output_camera}"] = {
             "dtype": "video",
             "shape": (height, width, 3),
             "names": ["height", "width", "channels"],
@@ -250,12 +253,17 @@ def convert(
     repo_id: str,
     dataset_split: str,
     maximum_camera_skew_ms: float,
+    representation: str = LEROBOT_OPENARM_REPRESENTATION,
 ):
     from lerobot.configs.video import RGBEncoderConfig
     from lerobot.datasets import LeRobotDataset
 
+    spec = get_spec(representation)
+    raw_root = raw_root.resolve()
+    output_root = output_root.resolve()
     if output_root.exists():
         raise FileExistsError(f"refusing to overwrite output: {output_root}")
+    output_root.parent.mkdir(parents=True, exist_ok=True)
 
     raw_metadata = {}
     metadata_path = raw_root / "metadata.yaml"
@@ -277,46 +285,70 @@ def convert(
         raise ValueError(f"no accepted episodes assigned to split {dataset_split!r}")
 
     maximum_camera_skew_ns = round(maximum_camera_skew_ms * 1e6)
-    aligned = [
-        align_episode(record, maximum_camera_skew_ns=maximum_camera_skew_ns)
-        for record in selected
-    ]
-    features = _feature_spec(aligned[0])
-    include_velocity = all(episode.velocity is not None for episode in aligned)
-    include_effort = all(episode.effort is not None for episode in aligned)
+    aligned = []
+    converted = []
+    for index, record in enumerate(selected, start=1):
+        episode = align_episode(record, maximum_camera_skew_ns=maximum_camera_skew_ns)
+        aligned.append(episode)
+        converted.append(
+            (
+                episode,
+                transform_state(episode.state, representation),
+                transform_action(episode.action, representation),
+            )
+        )
+        print(
+            f"[align {index}/{len(selected)}] raw episode {record.episode_id}: "
+            f"{len(episode.ticks)} frames, max camera skew "
+            f"{episode.maximum_camera_skew_ns / 1e6:.2f} ms",
+            flush=True,
+        )
+    features = _feature_spec(aligned[0], representation)
+    include_velocity = spec.include_telemetry and all(
+        episode.velocity is not None for episode in aligned
+    )
+    include_effort = spec.include_telemetry and all(
+        episode.effort is not None for episode in aligned
+    )
     if not include_velocity:
         features.pop("observation.velocity", None)
     if not include_effort:
         features.pop("observation.effort", None)
 
-    encoder = RGBEncoderConfig(vcodec="h264", pix_fmt="yuv420p", crf=23)
-    dataset = LeRobotDataset.create(
-        repo_id=repo_id,
-        root=output_root,
-        fps=FPS,
-        robot_type="openarm_bimanual",
-        features=features,
-        use_videos=True,
-        image_writer_threads=3,
-        rgb_encoder=encoder,
-    )
     conversion_started_ns = time.time_ns()
+    staging_root = output_root.with_name(
+        f".{output_root.name}.staging-{conversion_started_ns}"
+    )
+    dataset = None
+    finalized = False
     reports = []
     try:
-        for episode in aligned:
+        dataset = LeRobotDataset.create(
+            repo_id=repo_id,
+            root=staging_root,
+            fps=FPS,
+            robot_type=spec.robot_type,
+            features=features,
+            use_videos=True,
+            image_writer_threads=3,
+            rgb_encoder=RGBEncoderConfig(vcodec="h264", pix_fmt="yuv420p", crf=23),
+        )
+        for episode, state, action in converted:
             for frame_index in range(len(episode.ticks)):
                 frame = {
                     "task": task,
-                    "observation.state": episode.state[frame_index],
-                    "action": episode.action[frame_index],
+                    "observation.state": state[frame_index],
+                    "action": action[frame_index],
                 }
                 if include_velocity:
                     frame["observation.velocity"] = episode.velocity[frame_index]
                 if include_effort:
                     frame["observation.effort"] = episode.effort[frame_index]
-                for camera in CAMERA_NAMES:
-                    with Image.open(episode.camera_paths[camera][frame_index]) as image:
-                        frame[f"observation.images.{camera}"] = np.asarray(
+                for raw_camera, output_camera in spec.camera_map.items():
+                    with Image.open(
+                        episode.camera_paths[raw_camera][frame_index]
+                    ) as image:
+                        frame[f"observation.images.{output_camera}"] = np.asarray(
                             image.convert("RGB"), dtype=np.uint8
                         )
                 dataset.add_frame(frame)
@@ -330,27 +362,69 @@ def convert(
                     "maximum_camera_skew_ms": episode.maximum_camera_skew_ns / 1e6,
                 }
             )
-    finally:
+            print(
+                f"[encode {len(reports)}/{len(converted)}] raw episode "
+                f"{episode.record.episode_id}: {len(episode.ticks)} frames",
+                flush=True,
+            )
         dataset.finalize()
+        finalized = True
 
-    manifest = {
-        "format": "LeRobotDataset-v3",
-        "repo_id": repo_id,
-        "split": dataset_split,
-        "fps": FPS,
-        "action_semantics": "latest causal absolute bimanual IK target",
-        "state_semantics": "linearly interpolated measured bimanual joint state",
-        "camera_semantics": "nearest original JPEG within strict skew tolerance",
-        "maximum_camera_skew_ms": maximum_camera_skew_ms,
-        "conversion_started_ns": conversion_started_ns,
-        "conversion_finished_ns": time.time_ns(),
-        "source": str(raw_root.resolve()),
-        "episodes": reports,
-    }
-    with (output_root / "openarm_conversion_manifest.json").open(
-        "w", encoding="utf-8"
-    ) as output:
-        json.dump(manifest, output, indent=2, sort_keys=True)
+        manifest = {
+            "format": "LeRobotDataset-v3",
+            "representation": representation,
+            "repo_id": repo_id,
+            "robot_type": spec.robot_type,
+            "split": dataset_split,
+            "fps": FPS,
+            "source_representation": {
+                "joint_order": "right_then_left",
+                "arm_joint_units": "radians",
+                "right_gripper_action_domain": [-1.0, 0.0],
+                "left_gripper_action_domain": [0.0, 1.0],
+                "gripper_state_units": "radians",
+                "camera_names": list(CAMERA_NAMES),
+            },
+            "target_representation": {
+                "joint_order": spec.joint_order,
+                "joint_units": spec.joint_units,
+                "gripper_units": spec.gripper_units,
+                "joint_names": list(spec.joint_names),
+                "camera_map": spec.camera_map,
+                "safe_gripper_open_degrees": SAFE_GRIPPER_OPEN_DEG,
+                "safe_gripper_closed_degrees": 0.0,
+            },
+            "action_semantics": (
+                "latest causal absolute arm target with safe calibrated gripper target"
+                if representation == LEROBOT_OPENARM_REPRESENTATION
+                else "latest causal absolute bimanual IK target"
+            ),
+            "state_semantics": "linearly interpolated measured bimanual joint state",
+            "camera_semantics": "nearest original JPEG within strict skew tolerance",
+            "maximum_camera_skew_ms": maximum_camera_skew_ms,
+            "conversion_started_ns": conversion_started_ns,
+            "conversion_finished_ns": time.time_ns(),
+            "source": str(raw_root),
+            "episodes": reports,
+        }
+        with (staging_root / "openarm_conversion_manifest.json").open(
+            "w", encoding="utf-8"
+        ) as output:
+            json.dump(manifest, output, indent=2, sort_keys=True)
+            output.write("\n")
+        staging_root.replace(output_root)
+    except Exception:
+        if dataset is not None and not finalized:
+            try:
+                dataset.finalize()
+            except Exception:
+                pass
+        if staging_root.exists():
+            failed_root = output_root.with_name(
+                f".{output_root.name}.failed-{time.time_ns()}"
+            )
+            staging_root.replace(failed_root)
+        raise
 
 
 def main():
@@ -359,9 +433,14 @@ def main():
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--repo-id", default="local/openarm-tshirt-fold")
     parser.add_argument(
-        "--split", choices=("train", "validation"), default="train"
+        "--split", choices=("train", "validation", "evaluation"), default="train"
     )
-    parser.add_argument("--maximum-camera-skew-ms", type=float, default=25.0)
+    parser.add_argument("--maximum-camera-skew-ms", type=float, default=30.0)
+    parser.add_argument(
+        "--representation",
+        choices=REPRESENTATIONS,
+        default=LEROBOT_OPENARM_REPRESENTATION,
+    )
     args = parser.parse_args()
     convert(
         raw_root=args.raw_root,
@@ -369,6 +448,7 @@ def main():
         repo_id=args.repo_id,
         dataset_split=args.split,
         maximum_camera_skew_ms=args.maximum_camera_skew_ms,
+        representation=args.representation,
     )
 
 

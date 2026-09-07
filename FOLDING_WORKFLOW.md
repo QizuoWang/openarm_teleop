@@ -43,8 +43,14 @@ It does not authorize real-robot policy deployment.
   --target 25
 ```
 
-This writes `.openarm-fold/session.yaml`. Garment metadata is selected once per
-batch, not once per episode.
+This writes `.openarm-fold/session.yaml`. Each new session receives its own raw
+dataset at `folding_data/sessions/<session-id>/dataset`; sessions never append
+episodes to one another. Garment metadata is selected once per batch, not once
+per episode.
+
+The earlier shared dataset remains at `folding_data/dataset` and is not moved.
+Pass `--raw-root folding_data/dataset` when reviewing or converting that legacy
+smoke data.
 
 ## 2. Inspect static readiness
 
@@ -63,6 +69,10 @@ after Dora starts.
 ```
 
 Open `http://127.0.0.1:8000` on the PC monitor.
+
+The monitor shows live ceiling, left-wrist, and right-wrist previews at 10 FPS
+alongside the full-rate stream-health measurements. Preview requests are
+cache-disabled and retain only the newest frame in memory.
 
 Quest controls:
 
@@ -85,13 +95,46 @@ unused episode and never appends to a partial motion trajectory.
 ## 4. Review every 25 accepted episodes
 
 ```bash
+./openarm-fold visualize --episode 0 --open
 ./openarm-fold review
 ./openarm-fold report
 ```
 
+`review` builds a synchronized three-camera player for every episode and links
+each player from the batch page. Stop the collector before correcting a label:
+
+```bash
+./openarm-fold review --serve --open
+```
+
+The interactive review tool binds only to `127.0.0.1:8001`, requires a
+per-process form token and confirmation for each label change, and refuses to
+relabel while the collection UI is running on port 8000. Press Ctrl+C to stop
+the review server.
+
+```bash
+./openarm-fold relabel \
+  --episode 12 \
+  --status failed \
+  --failure-reason bad_demonstration
+
+./openarm-fold relabel --episode 12 --status accepted
+```
+
+Relabeling updates the per-episode manifest and dataset metadata while preserving
+all raw camera and robot files.
+
+Without `--raw-root`, these commands use the dataset recorded in the active
+`.openarm-fold/session.yaml`. To inspect another session, pass its explicit
+root, for example `--raw-root folding_data/sessions/fold-pilot-shirt02/dataset`.
+
 Outputs:
 
-- `reports/folding/episodes.html`: first/middle/final ceiling frames.
+- `reports/folding/episode-<id>-player.html`: synchronized wrist-left, ceiling,
+  and wrist-right playback. Space pauses; Left/Right seek one second; the speed
+  selector supports 0.25x to 2x playback.
+- `reports/folding/episodes.html`: first/middle/final ceiling frames with links
+  to every synchronized episode player.
 - `reports/folding/dataset-report.json`: complete-episode split, garment
   counts, failure reasons, duration distribution, batch gate, and the ACT chunk
   candidate after 25 accepted episodes.
@@ -102,31 +145,72 @@ or the canonical fold drifts. Duration is only a warning; the first batch's
 
 ## 5. Convert complete episodes to LeRobotDataset v3
 
-Set up the pinned environment in [TRAINING.md](TRAINING.md), then export the
-train and validation splits separately:
+Freeze the reviewed raw data and the working ACT baseline first. This creates a
+compact hash manifest and an application-level marker; it does not duplicate
+the large artifacts. After this command, collection resume and relabeling are
+refused for the frozen raw dataset.
+
+```bash
+./openarm-fold freeze-baseline \
+  --raw-root folding_data/sessions/fold-train-shirt01-batch01/dataset
+
+./openarm-fold verify-baseline
+```
+
+Set up the pinned checkout and environment in [TRAINING.md](TRAINING.md), then
+export the train and validation splits to new directories:
 
 ```bash
 ./openarm-fold convert \
+  --raw-root folding_data/sessions/fold-train-shirt01-batch01/dataset \
   --dataset-split train \
-  --repo-id local/openarm-tshirt-fold \
-  --output-root derived/lerobot/openarm-tshirt-fold-train
+  --output-root derived/lerobot06/openarm-tshirt-fold-train
 
 ./openarm-fold convert \
+  --raw-root folding_data/sessions/fold-train-shirt01-batch01/dataset \
   --dataset-split validation \
-  --repo-id local/openarm-tshirt-fold-validation \
-  --output-root derived/lerobot/openarm-tshirt-fold-validation
+  --output-root derived/lerobot06/openarm-tshirt-fold-validation
 ```
 
 Conversion uses a fixed 30 Hz overlapping timeline:
 
-- nearest original camera frame within 25 ms;
+- nearest original camera frame within 30 ms;
 - linearly interpolated measured joint state;
 - most recent command at or before the frame timestamp;
 - no fabricated camera, state, or action samples.
 
+The default `lerobot-openarm-v1` representation has 16-D left-arm-then-right-arm
+state and action in degrees. Both gripper action targets use the same
+negative-open convention with a conservative range of `[-22.9183, 0]` degrees;
+measured state remains unclipped. Raw logical gripper actions are validated
+before conversion. The model-facing schema contains
+only state, action, task, and the `left_wrist`, `right_wrist`, and `base` camera
+streams; velocity and effort remain in the lossless raw source.
+
 Raw 640 x 360 JPEGs are retained. Derived camera streams are H.264 MP4. The
-converter refuses to overwrite an existing output and writes an alignment
-manifest.
+converter refuses to overwrite an existing output, stages incomplete work away
+from the final path, recomputes statistics, and writes an alignment manifest.
+The old right-first/radian behavior remains available only when explicitly
+requested with `--representation dora-rad-v1` and a different output path.
+
+Verify each completed export against every transformed raw state/action row and
+decode beginning, middle, and ending frames from every camera:
+
+```bash
+./openarm-fold verify-export \
+  --raw-root folding_data/sessions/fold-train-shirt01-batch01/dataset \
+  --dataset-root derived/lerobot06/openarm-tshirt-fold-train \
+  --dataset-split train \
+  --expected-episodes 52 \
+  --expected-frames 91589
+
+./openarm-fold verify-export \
+  --raw-root folding_data/sessions/fold-train-shirt01-batch01/dataset \
+  --dataset-root derived/lerobot06/openarm-tshirt-fold-validation \
+  --dataset-split validation \
+  --expected-episodes 6 \
+  --expected-frames 10299
+```
 
 ## 6. Train and report
 
@@ -137,21 +221,22 @@ pinned profile:
 ./openarm-fold preflight --training
 
 ./openarm-fold train \
-  --dataset-root derived/lerobot/openarm-tshirt-fold-train \
-  --repo-id local/openarm-tshirt-fold \
+  --dataset-root derived/lerobot06/openarm-tshirt-fold-train \
   --chunk-size 60
 ```
 
-The example `60` is not a default; use the recorded report. Training writes an
-OpenArm manifest before launching LeRobot. W&B is disabled. The command stops
-if CUDA, the isolated environment, or `/dev/nvidia0` is unavailable.
+The example `60` is not a default; use the recorded report. The repository ID is
+read from the conversion manifest. Training writes an OpenArm manifest before
+launching the pinned local LeRobot checkout. W&B and Hub upload are disabled.
+The command stops if the dataset representation, local revision, clean checkout,
+CUDA environment, or `/dev/nvidia0` does not match the pinned profile.
 
 Teacher-forced validation loss is optional and is not real-robot evidence:
 
 ```bash
 ./openarm-fold report \
   --checkpoint outputs/act-tshirt-fold/checkpoints/last/pretrained_model \
-  --validation-root derived/lerobot/openarm-tshirt-fold-validation
+  --validation-root derived/lerobot06/openarm-tshirt-fold-validation
 ```
 
 Physical acceptance remains 8/10 successful folds on familiar shirt types,
